@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Stops on a Map!</title>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no' />
+    <script src="//code.jquery.com/jquery-1.11.0.min.js"></script>
+    <script src="//code.jquery.com/jquery-migrate-1.2.1.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/handlebars.js/1.3.0/handlebars.js"></script>
+    <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.2/leaflet.css" />
+    <script src="http://cdn.leafletjs.com/leaflet-0.7.2/leaflet.js"></script>
+    <script type="text/javascript" src="http://maps.stamen.com/js/tile.stamen.js?v1.2.4"></script>
+    <style>
+      body {
+        margin:0;
+        padding:0;
+      }
+
+      #map {
+        position:absolute;
+        top:0;
+        bottom:0;
+        width:100%;
+      }
+    </style>
+    <script id="popup-template" type="text/x-handlebars-template">
+      <div class="popup">
+	<span class="name">{{name}}</span>
+	<div class="arrivals"></div>
+      </div>
+    </script>
+    <script type="text/javascript">
+var map;
+
+var popupTemplate;
+var arrivalsTemplate;
+
+var apiBase = "http://oba.mobilitylab.org/api/where";
+var apiKey = "TEST";
+
+var agencies = {};
+var routes = {};
+var stops = {};
+var stopMarkers = {};
+/*
+function stopClick(e) {
+var marker = e.target;
+var stopId = e.target.options.title;
+
+
+$.getJSON(apiBase + "/arrivals-and-departures-for-stop/"+stopId+".json?callback=?", {'key': apiKey, version: 2, minutesBefore:0, minutesAfter:15},
+function(data) {
+if (data.code == 200) { 
+
+console.log(data.data);
+
+
+}});
+
+
+}
+*/
+
+function markerForStop(stopId) {
+    var stop = stops[stopId];
+
+    if (stopMarkers[stopId] == undefined) {
+        stopMarkers[stopId] = L.marker([stop.lat, stop.lon], {
+            title: stop.id
+        });
+        stopMarkers[stopId].bindPopup(popupTemplate({
+            name: stop.name
+        }));
+        //stopMarkers[stopId].on("click", stopClick);
+        stopMarkers[stopId].addTo(map);
+    }
+}
+
+function handleMapChange(e) {
+    var bounds = map.getBounds();
+    var lat = bounds.getCenter().lat;
+    var lon = bounds.getCenter().lng;
+
+    var latSpan = 2 * Math.abs(lat - bounds.getSouth());
+    var lonSpan = 2 * Math.abs(bounds.getWest() - lon);
+
+    $.getJSON(apiBase + "/stops-for-location.json?callback=?", {
+            'key': apiKey,
+            version: 2,
+            maxCount: 500,
+            lat: lat,
+            lon: lon,
+            latSpan: latSpan,
+            lonSpan: lonSpan
+        },
+        function (data) {
+            if (data.code == 200) {
+
+                $.each(data.data.references.agencies, function (i, v) {
+                    agencies[v.id] = v;
+                });
+                $.each(data.data.references.routes, function (i, v) {
+                    routes[v.id] = v;
+                });
+
+                $.each(data.data.list, function (i, v) {
+                    stops[v.id] = v;
+                    markerForStop(v.id);
+                });
+
+
+            }
+        });
+
+}
+
+$(function () {
+    popupTemplate = Handlebars.compile($('#popup-template').html());
+
+    var layer = new L.StamenTileLayer("toner-lite");
+    map = new L.Map("map", {
+        center: new L.LatLng(0, 0),
+        zoom: 12
+    });
+    map.addLayer(layer);
+
+    map.on('dragend', handleMapChange);
+    map.on('zoomend', handleMapChange);
+
+    $.getJSON(apiBase + "/agencies-with-coverage.json?callback=?", {
+            'key': apiKey,
+            version: 2
+        },
+        function (data) {
+            if (data.code == 200) {
+
+                $.each(data.data.references.agencies, function (i, v) {
+                    agencies[v.id] = v;
+                });
+
+                var bounds = new L.LatLngBounds();
+
+                $.each(data.data.list, function (i, v) {
+
+                    bounds.extend(L.latLngBounds(
+                        L.latLng(v.lat - v.latSpan, v.lon + v.lonSpan),
+                        L.latLng(v.lat + v.latSpan, v.lon - v.lonSpan)
+                    ));
+
+                });
+
+                map.fitBounds(bounds);
+            }
+
+        });
+
+
+
+});
+    </script>
+  </head>
+  <body>
+  <div id="map"></div>
+  </body>
+</html>
